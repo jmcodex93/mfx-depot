@@ -1,0 +1,43 @@
+#!/bin/zsh
+# Tier-2 QA matrix: real Houdini 21/22. The release badge -- run before
+# every release. Tier-1 (bin/test) runs first.
+cd "$(dirname "$0")/.."
+fail=0
+bin/test || fail=1
+for v in 21.0 22.0; do
+  HFS_DIR=$(ls -d /Applications/Houdini/Houdini${v}.* 2>/dev/null \
+            | sort -t. -k3 -n | tail -1)
+  if [ -z "$HFS_DIR" ]; then
+    echo "=============== Houdini $v: NOT INSTALLED (skip) ==============="
+    continue
+  fi
+  HY="$HFS_DIR/Frameworks/Houdini.framework/Versions/$v/Resources/bin/hython"
+  TMP=$(mktemp -d)
+  export HOUDINI_USER_PREF_DIR="$TMP/prefs/__HVER__"
+  export MFX_ROOT="$TMP/MFX"
+  mkdir -p "$TMP/prefs/$v"
+  echo "=============== Houdini $v ($(basename "$HFS_DIR")) ==============="
+  "$HY" tests/qa/build_fixture.py "$TMP/pkg/otls/qafixture.hda" || { fail=1; continue; }
+  printf '{"name": "QA Fixture", "version": "1.0", "min_houdini": "21.0"}\n' \
+      > "$TMP/pkg/mfx.json"
+  # mfx runs with HOME/USERPROFILE pointed at $TMP so the platform-default
+  # prefs root (~/Library/Preferences/houdini) resolves inside the tmp dir
+  # and doesn't exist: prefs discovery then only sees HOUDINI_USER_PREF_DIR,
+  # and the real machine's Houdini prefs are never touched. hython keeps
+  # the real HOME -- it needs the real ~/Library for licensing, and
+  # HOUDINI_USER_PREF_DIR already isolates its prefs.
+  HOME="$TMP" USERPROFILE="$TMP" PYTHONPATH=src python3 -m mfx install "$TMP/pkg" --yes || fail=1
+  "$HY" tests/qa/check_loaded.py || fail=1
+  "$HY" tests/qa/make_scene.py "$TMP/scene.hip" || fail=1
+  HOME="$TMP" USERPROFILE="$TMP" PYTHONPATH=src python3 -m mfx lock "$TMP/scene.hip" \
+      -o "$TMP/lock.json" --hfs "$HFS_DIR" || fail=1
+  python3 tests/qa/check_lock.py "$TMP/lock.json" || fail=1
+  rm -rf "$TMP"
+  unset HOUDINI_USER_PREF_DIR MFX_ROOT
+done
+if [ $fail -eq 0 ]; then
+  echo "QA MATRIX: ALL PASS"
+else
+  echo "QA MATRIX: FAILURES" >&2
+fi
+exit $fail
