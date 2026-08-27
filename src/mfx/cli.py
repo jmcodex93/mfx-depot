@@ -1,8 +1,13 @@
 import argparse
+import json
 import sys
+import tempfile
+from pathlib import Path
 
-from . import __version__
+from . import __version__, infer, installer, registry, sources
+from . import prefs as prefs_mod
 from .errors import DepotError
+from .ui import confirm, out
 
 
 def build_parser():
@@ -18,8 +23,113 @@ def build_parser():
     return ap
 
 
+def load_state(prefs_dirs):
+    """Registry + one-time adoption of legacy install.py installs."""
+    reg = registry.load()
+    if registry.adopt(reg, prefs_dirs):
+        registry.save(reg)
+    return reg
+
+
+def install_source(source, override_name, prefs_dirs, reg, assume_yes):
+    """Shared by 'mfx install' and 'mfx update' (Task 10)."""
+    with tempfile.TemporaryDirectory(prefix="mfx_") as td:
+        tree, hints = sources.acquire(source, Path(td))
+        root = infer.find_root(tree)
+        if root is None:
+            raise DepotError(
+                "no Houdini package found in %s.\nExpected otls/, hda/, "
+                "scripts/, toolbar/ or .hda files somewhere inside. If this "
+                "really is a package, install its payload folder directly."
+                % source)
+        info = infer.inspect(root, name_hint=hints.get("name"),
+                             version_hint=hints.get("version"),
+                             override_name=override_name)
+        prev = reg["packages"].get(info.slug)
+        out("%s %s" % (info.name, info.version))
+        if info.unversioned:
+            out("  (no version found in the source; using a dated fallback)")
+        if prev:
+            out("  replaces: %s %s (from %s)"
+                % (prev["name"], prev["version"], prev["source"]["ref"]))
+            out("  To keep both, re-run with --name <other-name>.")
+        out("  install to : %s" % installer.payload_target(info, reg))
+        pkg_file = ((prev or {}).get("pkg_file")
+                    or installer.default_pkg_file(info.slug))
+        for p in prefs_dirs:
+            out("  register in: %s" % (prefs_mod.pkg_dir(p) / pkg_file))
+        if not confirm("Proceed?", assume_yes):
+            out("Nothing was changed.")
+            return 0
+        installer.apply(info, reg, prefs_dirs,
+                        {"kind": "url" if "://" in str(source) else "local",
+                         "ref": str(source)})
+        registry.save(reg)
+        out("Done. Restart Houdini to load %s." % info.name)
+        return 0
+
+
+def cmd_install(args):
+    prefs_dirs = prefs_mod.houdini_pref_dirs(args.prefs_dir)
+    reg = load_state(prefs_dirs)
+    return install_source(args.source, args.name, prefs_dirs, reg, args.yes)
+
+
+def cmd_list(args):
+    prefs_dirs = prefs_mod.houdini_pref_dirs()
+    reg = load_state(prefs_dirs)
+    if not reg["packages"]:
+        out("No packages installed. Try: mfx install <zip|folder|url>")
+    for slug in sorted(reg["packages"]):
+        e = reg["packages"][slug]
+        flags = []
+        if e.get("pin"):
+            flags.append("pinned %s" % e["pin"])
+        if e["source"]["kind"] == "adopted":
+            flags.append("(adopted)")
+        if str(e.get("version", "")).startswith("0.0+"):
+            flags.append("(unversioned)")
+        out("%-24s %-12s %s" % (slug, e["version"], " ".join(flags)))
+    if args.all:
+        managed = {e["pkg_file"] for e in reg["packages"].values()}
+        for p in prefs_dirs:
+            for f in sorted(prefs_mod.pkg_dir(p).glob("*.json")):
+                if f.name not in managed:
+                    out("%-24s %-12s foreign: %s" % (f.stem, "-", f))
+    return 0
+
+
+def cmd_info(args):
+    prefs_dirs = prefs_mod.houdini_pref_dirs()
+    reg = load_state(prefs_dirs)
+    e = reg["packages"].get(args.name) or reg["packages"].get(
+        registry.slugify(args.name))
+    if not e:
+        raise DepotError("%s is not installed. See 'mfx list'." % args.name)
+    show = {k: e[k] for k in ("name", "slug", "version", "payload_dir",
+                              "env_var", "pkg_file", "source", "installed_at",
+                              "pin", "feed", "min_houdini", "prefs")}
+    out(json.dumps(show, indent=2, sort_keys=True))
+    return 0
+
+
 def _register(sub):
-    """Subcommands are attached here as tasks add them."""
+    p = sub.add_parser("install", help="install a package from a zip, "
+                       "folder, .hda file or URL")
+    p.add_argument("source")
+    p.add_argument("--name", help="override the inferred package name")
+    p.add_argument("--yes", action="store_true")
+    p.add_argument("--prefs-dir", help="also register in this prefs dir")
+    p.set_defaults(func=cmd_install)
+
+    p = sub.add_parser("list", help="list installed packages")
+    p.add_argument("--all", action="store_true",
+                   help="also show package files not managed by mfx")
+    p.set_defaults(func=cmd_list)
+
+    p = sub.add_parser("info", help="show one package's registry entry")
+    p.add_argument("name")
+    p.set_defaults(func=cmd_info)
 
 
 def main(argv=None):
