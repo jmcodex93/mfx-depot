@@ -1,6 +1,12 @@
 """Acquire an install source into a local tree. Local kinds here;
 URL/GitHub kinds are added by the network milestone (M2)."""
+import json
+import os
+import re
 import shutil
+import urllib.error
+import urllib.parse
+import urllib.request
 import zipfile
 from pathlib import Path
 
@@ -54,5 +60,87 @@ def extract_zip(zpath, dest):
         raise DepotError("%s is not a valid zip file." % zpath)
 
 
+TIMEOUT = 10
+UA = {"User-Agent": "mfx-depot"}
+GITHUB_URL_RE = re.compile(
+    r"https?://github\.com/([^/]+)/([^/]+?)(?:\.git)?(?:/.*)?$")
+
+
+def download(url, dest):
+    req = urllib.request.Request(url, headers=UA)
+    try:
+        with urllib.request.urlopen(req, timeout=TIMEOUT) as r, \
+                open(dest, "wb") as f:
+            while True:
+                chunk = r.read(1 << 16)
+                if not chunk:
+                    break
+                f.write(chunk)
+    except (urllib.error.URLError, OSError) as e:
+        raise DepotError(
+            "could not download %s (%s).\nCheck the URL and your "
+            "connection, then re-run." % (url, e))
+    return dest
+
+
+def _api_json(path):
+    base = os.environ.get("MFX_GITHUB_API", "https://api.github.com")
+    req = urllib.request.Request(base + path, headers=UA)
+    with urllib.request.urlopen(req, timeout=TIMEOUT) as r:
+        return json.loads(r.read().decode("utf-8"))
+
+
+def github_archive(owner, repo):
+    """Best downloadable archive: release asset > release zipball >
+    first tag zipball > default-branch archive. Returns (url, version)."""
+    try:
+        rel = _api_json("/repos/%s/%s/releases/latest" % (owner, repo))
+        version = (rel.get("tag_name") or "").lstrip("v") or None
+        for a in rel.get("assets") or []:
+            if str(a.get("name", "")).lower().endswith(".zip"):
+                return a["browser_download_url"], version
+        if rel.get("zipball_url"):
+            return rel["zipball_url"], version
+    except (urllib.error.URLError, OSError, ValueError, KeyError):
+        pass
+    try:
+        tags = _api_json("/repos/%s/%s/tags" % (owner, repo))
+        if tags:
+            return (tags[0]["zipball_url"],
+                    str(tags[0].get("name", "")).lstrip("v") or None)
+    except (urllib.error.URLError, OSError, ValueError, KeyError):
+        pass
+    try:
+        meta = _api_json("/repos/%s/%s" % (owner, repo))
+        branch = meta.get("default_branch") or "main"
+        web = os.environ.get("MFX_GITHUB_WEB", "https://github.com")
+        return ("%s/%s/%s/archive/refs/heads/%s.zip"
+                % (web, owner, repo, branch)), None
+    except (urllib.error.URLError, OSError, ValueError):
+        raise DepotError(
+            "could not reach GitHub for %s/%s.\nCheck the repository name "
+            "and your connection; private repos are not supported yet."
+            % (owner, repo))
+
+
 def _acquire_url(url, workdir):
-    raise DepotError("URL sources are not implemented yet.")
+    hints = {}
+    gh = GITHUB_URL_RE.match(url)
+    if gh and not url.lower().endswith(".zip"):
+        owner, repo = gh.group(1), gh.group(2)
+        url, version = github_archive(owner, repo)
+        hints["name"] = repo
+        if version:
+            hints["version"] = version
+    zpath = workdir / "download.zip"
+    download(url, zpath)
+    tree = workdir / "unzipped"
+    tree.mkdir(parents=True)
+    extract_zip(zpath, tree)
+    if "name" not in hints:
+        # Decode URL-encoded path before extracting stem
+        path = urllib.parse.unquote(url.split("?")[0])
+        stem = Path(path).stem
+        name, _ = split_name_version(stem)   # name only; see local zip note
+        hints["name"] = name
+    return tree, hints
