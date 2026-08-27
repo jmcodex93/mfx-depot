@@ -12,7 +12,7 @@ class TestUpdatePin(SandboxCase, unittest.TestCase):
         newer_dir = self.sb.home / "newer"
         z21 = fixtures.make_camrig_zip(newer_dir)
         # rewrite the 2.1 zip's manifest version by rebuilding the tree
-        import zipfile, shutil
+        import zipfile
         tree = newer_dir / "camrig_src"
         man = tree / "MFX_CamRig" / "mfx.json"
         man.write_text(json.dumps({"name": "MFX CamRig", "version": "2.1",
@@ -58,6 +58,40 @@ class TestUpdatePin(SandboxCase, unittest.TestCase):
         r = self.sb.mfx("update", "--yes")
         self.assertEqual(r.returncode, 0)
         self.assertIn("no update channel", r.stdout)
+
+    def test_update_uses_feed_latest_as_version_hint(self):
+        # the update zip has a BARE unversioned hda and no mfx.json, so
+        # inference has nothing to go on except the feed's "latest" -- it
+        # must land there instead of a dated 0.0+ fallback (spec section 6).
+        newer_dir = self.sb.home / "newer"
+        bare_tree = newer_dir / "bare_src" / "MFX_CamRig"
+        fixtures.make_dummy_hda(bare_tree / "hda" / "mfx_camrig.hda",
+                                table="Object", optype="mfx::camrig::3.0",
+                                label="MFX CamRig")
+        z3 = fixtures.zip_dir(bare_tree.parent, newer_dir / "camrig_bare.zip")
+        feed = self.sb.home / "camrig_feed.json"
+        feed.write_text(json.dumps({"latest": "3.0",
+                                    "url": z3.resolve().as_uri()}))
+        z20 = fixtures.make_camrig_zip(self.sb.home,
+                                       feed_url=feed.resolve().as_uri())
+        r = self.sb.mfx("install", str(z20), "--yes")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        r = self.sb.mfx("update", "--yes")
+        self.assertEqual(r.returncode, 0, r.stderr + r.stdout)
+        self.assertIn("2.0 -> 3.0", r.stdout)
+        self.assertTrue((self.sb.home / "MFX" / "camrig" / "3.0").is_dir())
+        r = self.sb.mfx("update", "--yes")
+        self.assertEqual(r.returncode, 0, r.stderr + r.stdout)
+        self.assertIn("up to date (3.0)", r.stdout)
+
+    def test_pin_resolves_display_name_to_slug(self):
+        self._install_with_feed()
+        r = self.sb.mfx("pin", "MFX CamRig")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("pinned", r.stdout)
+        r = self.sb.mfx("info", "camrig")
+        self.assertEqual(r.returncode, 0)
+        self.assertIn('"pin": "2.0"', r.stdout)
 
     def test_pin_other_version_is_actionable(self):
         self._install_with_feed()

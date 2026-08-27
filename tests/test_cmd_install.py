@@ -75,6 +75,22 @@ class TestInstallE2E(SandboxCase, unittest.TestCase):
         self.assertIn("camrig", r.stdout)
         self.assertIn("(adopted)", r.stdout)
 
+    def test_install_of_installed_payload_folder_repairs_in_place(self):
+        # installing ~/MFX/<slug>/<version> directly (self-install) must
+        # never delete the payload it is reading from (spec section 12).
+        z = fixtures.make_camrig_zip(self.sb.home)
+        self.sb.mfx("install", str(z), "--yes")
+        payload = self.sb.home / "MFX" / "camrig" / "2.0"
+        marker = payload / "hda" / "mfx_camrig_2.0.hda"
+        self.assertTrue(marker.is_file())
+        r = self.sb.mfx("install", str(payload), "--yes")
+        self.assertEqual(r.returncode, 0, r.stderr + r.stdout)
+        self.assertTrue(payload.is_dir())
+        self.assertTrue(marker.is_file())
+        for prefs in (self.sb.prefs21, self.sb.prefs22):
+            f = prefs / "packages" / "MFX_camrig.json"
+            self.assertTrue(f.is_file(), f)
+
     def test_list_all_shows_foreign_packages(self):
         pkg = self.sb.prefs21 / "packages"
         pkg.mkdir(parents=True, exist_ok=True)

@@ -2,7 +2,7 @@
 which version is it. The manifest (mfx.json) refines; inference carries."""
 import json
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
 from typing import Optional

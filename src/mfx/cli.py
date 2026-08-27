@@ -2,6 +2,7 @@ import argparse
 import json
 import sys
 import tempfile
+import traceback
 from pathlib import Path
 
 from . import __version__, infer, installer, lockfile, registry, sources, feeds, doctor
@@ -33,7 +34,19 @@ def load_state(prefs_dirs):
     return reg
 
 
-def install_source(source, override_name, prefs_dirs, reg, assume_yes):
+def resolve_slug(reg, name):
+    """Resolve a user-typed name to its registry key: exact slug match
+    first, else slugify(name). Raises if neither is installed."""
+    if name in reg["packages"]:
+        return name
+    slug = registry.slugify(name)
+    if slug in reg["packages"]:
+        return slug
+    raise DepotError("%s is not installed. See 'mfx list'." % name)
+
+
+def install_source(source, override_name, prefs_dirs, reg, assume_yes,
+                    version_hint=None):
     """Shared by 'mfx install' and 'mfx update' (Task 10)."""
     with tempfile.TemporaryDirectory(prefix="mfx_") as td:
         tree, hints = sources.acquire(source, Path(td))
@@ -45,7 +58,7 @@ def install_source(source, override_name, prefs_dirs, reg, assume_yes):
                 "really is a package, install its payload folder directly."
                 % source)
         info = infer.inspect(root, name_hint=hints.get("name"),
-                             version_hint=hints.get("version"),
+                             version_hint=hints.get("version") or version_hint,
                              override_name=override_name)
         prev = reg["packages"].get(info.slug)
         out("%s %s" % (info.name, info.version))
@@ -112,10 +125,7 @@ def cmd_list(args):
 def cmd_info(args):
     prefs_dirs = prefs_mod.houdini_pref_dirs()
     reg = load_state(prefs_dirs)
-    e = reg["packages"].get(args.name) or reg["packages"].get(
-        registry.slugify(args.name))
-    if not e:
-        raise DepotError("%s is not installed. See 'mfx list'." % args.name)
+    e = reg["packages"][resolve_slug(reg, args.name)]
     show = {k: e[k] for k in ("name", "slug", "version", "payload_dir",
                               "env_var", "pkg_file", "source", "installed_at",
                               "pin", "feed", "min_houdini", "prefs")}
@@ -126,10 +136,8 @@ def cmd_info(args):
 def cmd_uninstall(args):
     prefs_dirs = prefs_mod.houdini_pref_dirs()
     reg = load_state(prefs_dirs)
-    slug = args.name if args.name in reg["packages"] else registry.slugify(args.name)
-    e = reg["packages"].get(slug)
-    if not e:
-        raise DepotError("%s is not installed. See 'mfx list'." % args.name)
+    slug = resolve_slug(reg, args.name)
+    e = reg["packages"][slug]
     out("Uninstall %s %s" % (e["name"], e["version"]))
     dirs = {Path(p) for p in e.get("prefs") or []} | set(prefs_dirs)
     for prefs in sorted(dirs):
@@ -155,9 +163,7 @@ def cmd_repair(args):
     reg = load_state(prefs_dirs)
     only_slug = None
     if args.name:
-        only_slug = args.name if args.name in reg["packages"] else registry.slugify(args.name)
-        if only_slug not in reg["packages"]:
-            raise DepotError("%s is not installed. See 'mfx list'." % args.name)
+        only_slug = resolve_slug(reg, args.name)
     num_pkgs = 1 if only_slug else len(reg["packages"])
     num_prefs = len(prefs_dirs)
     out("Repair will rewrite package files for %d package(s) in %d prefs dir(s)" % (num_pkgs, num_prefs))
@@ -178,9 +184,7 @@ def cmd_repair(args):
 def cmd_update(args):
     prefs_dirs = prefs_mod.houdini_pref_dirs()
     reg = load_state(prefs_dirs)
-    slugs = [args.name] if args.name else sorted(reg["packages"])
-    if args.name and args.name not in reg["packages"]:
-        raise DepotError("%s is not installed. See 'mfx list'." % args.name)
+    slugs = [resolve_slug(reg, args.name)] if args.name else sorted(reg["packages"])
     rc = 0
     for slug in slugs:
         e = reg["packages"][slug]
@@ -206,16 +210,16 @@ def cmd_update(args):
                 "from the creator and 'mfx install' it.")
             continue
         rc = install_source(status["url"], e["name"], prefs_dirs, reg,
-                            args.yes) or rc
+                            args.yes,
+                            version_hint=status["latest"]) or rc
     return rc
 
 
 def cmd_pin(args):
     prefs_dirs = prefs_mod.houdini_pref_dirs()
     reg = load_state(prefs_dirs)
-    e = reg["packages"].get(args.name)
-    if not e:
-        raise DepotError("%s is not installed. See 'mfx list'." % args.name)
+    slug = resolve_slug(reg, args.name)
+    e = reg["packages"][slug]
     if args.pin_version and args.pin_version != e["version"]:
         raise DepotError(
             "%s is at %s, not %s. Pin freezes the CURRENT version; use "
@@ -231,9 +235,8 @@ def cmd_pin(args):
 def cmd_unpin(args):
     prefs_dirs = prefs_mod.houdini_pref_dirs()
     reg = load_state(prefs_dirs)
-    e = reg["packages"].get(args.name)
-    if not e:
-        raise DepotError("%s is not installed. See 'mfx list'." % args.name)
+    slug = resolve_slug(reg, args.name)
+    e = reg["packages"][slug]
     e["pin"] = None
     registry.save(reg)
     out("%s unpinned." % args.name)
@@ -243,14 +246,13 @@ def cmd_unpin(args):
 def cmd_rollback(args):
     prefs_dirs = prefs_mod.houdini_pref_dirs()
     reg = load_state(prefs_dirs)
-    e = reg["packages"].get(args.name)
-    if not e:
-        raise DepotError("%s is not installed. See 'mfx list'." % args.name)
+    slug = resolve_slug(reg, args.name)
+    e = reg["packages"][slug]
     out("Rolling back %s from %s" % (e["name"], e["version"]))
     if not confirm("Proceed?", args.yes):
         out("Nothing was changed.")
         return 0
-    cur, prev = installer.rollback(args.name, reg, prefs_dirs)
+    cur, prev = installer.rollback(slug, reg, prefs_dirs)
     registry.save(reg)
     out("Done: %s -> %s. Restart Houdini." % (cur, prev))
     return 0
@@ -369,3 +371,7 @@ def main(argv=None):
         sys.stderr.write("\nInterrupted; nothing may be half-written - "
                          "run 'mfx repair' if in doubt.\n")
         return 1
+    except Exception:
+        traceback.print_exc()
+        sys.stderr.write("ERROR: internal error - please report this\n")
+        return 2

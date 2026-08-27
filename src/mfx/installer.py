@@ -101,14 +101,18 @@ def apply(info, reg, prefs_dirs, source):
     pkg_file = (entry or {}).get("pkg_file") or default_pkg_file(info.slug)
     payload_dir = (entry or {}).get("payload_dir") or info.slug
     target = mfx_root() / payload_dir / info.version
-    try:
-        if target.exists():
-            shutil.rmtree(target)       # reinstall same version = repair
-        target.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copytree(info.root, target)
-    except (OSError, PermissionError) as e:
-        raise DepotError("could not copy the payload to %s (%s).\n"
-                         "Check disk space and permissions." % (target, e))
+    src = info.root.resolve()
+    dst = target.resolve()
+    self_install = src == dst or dst in src.parents
+    if not self_install:
+        try:
+            if target.exists():
+                shutil.rmtree(target)   # reinstall same version = repair
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copytree(info.root, target)
+        except (OSError, PermissionError) as e:
+            raise DepotError("could not copy the payload to %s (%s).\n"
+                             "Check disk space and permissions." % (target, e))
     data = render_pkg_json(info, target)
     register(pkg_file, data, prefs_dirs)
     e = entry or new_entry()
