@@ -41,6 +41,24 @@ class TestState(RegistryBase):
             registry.slugify("___")
 
 
+class TestLoadsLax(unittest.TestCase):
+    def test_comments_and_trailing_commas(self):
+        self.assertEqual(registry.loads_lax(
+            '{\n// hi\n"env": [\n  {"A": "1"},\n],\n}'),
+            {"env": [{"A": "1"}]})
+
+    def test_slashes_inside_strings_survive(self):
+        self.assertEqual(registry.loads_lax('{"p": "http://x//y"}'),
+                         {"p": "http://x//y"})
+
+    def test_strict_json_unchanged(self):
+        self.assertEqual(registry.loads_lax('{"a": 1}'), {"a": 1})
+
+    def test_still_invalid_raises(self):
+        with self.assertRaises(json.JSONDecodeError):
+            registry.loads_lax('{"env": [}')
+
+
 class TestAdoption(RegistryBase):
     def _legacy_prefs(self, name="MFXCamRig.json", var="MFX_CAMRIG",
                       target="CamRig/2.0"):
@@ -77,6 +95,22 @@ class TestAdoption(RegistryBase):
         (prefs / "packages" / "SideFXLabs.json").write_text(
             json.dumps({"env": [{"SIDEFXLABS": "/somewhere"}], "path": "$SIDEFXLABS"}))
         (prefs / "packages" / "broken.json").write_text("{nope")
+        data = registry.load()
+        self.assertEqual(registry.adopt(data, [prefs]), ["camrig"])
+
+    def test_adopts_lax_json_package(self):
+        prefs = self.tmp / "prefs" / "21.0"
+        (prefs / "packages").mkdir(parents=True, exist_ok=True)
+        tgt = registry.mfx_root() / "CamRig" / "2.0"
+        tgt.mkdir(parents=True, exist_ok=True)
+        (prefs / "packages" / "MFXCamRig.json").write_text(
+            '{\n'
+            '  // written by hand, Houdini accepts this\n'
+            '  "env": [\n'
+            '    {"MFX_CAMRIG": "%s"},\n'
+            '  ],\n'
+            '  "path": "$MFX_CAMRIG",\n'
+            '}\n' % tgt)
         data = registry.load()
         self.assertEqual(registry.adopt(data, [prefs]), ["camrig"])
 

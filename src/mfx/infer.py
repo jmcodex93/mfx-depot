@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Optional
 
 from .errors import DepotError
-from .registry import slugify
+from .registry import loads_lax, slugify
 
 MARKER_DIRS = ("otls", "hda", "scripts", "toolbar", "vex", "ocl",
                "desktop", "presets", "gallery", "soho", "dso")
@@ -99,7 +99,7 @@ def _find_shipped_pkg(root):
         if f.name == "mfx.json":
             continue
         try:
-            data = json.loads(f.read_text())
+            data = loads_lax(f.read_text())
         except (json.JSONDecodeError, OSError):
             continue
         if isinstance(data, dict) and ("env" in data or "path" in data

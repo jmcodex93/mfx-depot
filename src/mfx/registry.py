@@ -47,6 +47,38 @@ def slugify(name):
     return s
 
 
+def loads_lax(text):
+    """json.loads with Houdini's package-file tolerances: // comments and
+    trailing commas (real MOPS_Plus.json / Modeler.json load fine in
+    Houdini). Raises json.JSONDecodeError if still invalid."""
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
+        pass
+    out, i, n, in_str = [], 0, len(text), False
+    while i < n:
+        c = text[i]
+        if in_str:
+            out.append(c)
+            if c == "\\" and i + 1 < n:
+                out.append(text[i + 1])
+                i += 2
+                continue
+            if c == '"':
+                in_str = False
+        elif c == '"':
+            in_str = True
+            out.append(c)
+        elif c == "/" and i + 1 < n and text[i + 1] == "/":
+            while i < n and text[i] != "\n":
+                i += 1
+            continue
+        else:
+            out.append(c)
+        i += 1
+    return json.loads(re.sub(r",(\s*[}\]])", r"\1", "".join(out)))
+
+
 def load():
     p = state_path()
     if not p.is_file():
@@ -93,7 +125,7 @@ def adopt(data, prefs_dirs):
             continue
         for f in sorted(pdir.glob("*.json")):
             try:
-                pkg = json.loads(f.read_text())
+                pkg = loads_lax(f.read_text())
             except (json.JSONDecodeError, OSError):
                 continue        # doctor reports broken files; adoption skips
             env = pkg.get("env")

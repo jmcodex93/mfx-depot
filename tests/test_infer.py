@@ -71,6 +71,15 @@ class TestInspect(unittest.TestCase):
         self.assertEqual(info.name, "SideFXLabs")
         self.assertEqual(info.shipped_pkg, t / "packages" / "SideFXLabs.json")
 
+    def test_shipped_pkg_json_lax_syntax_still_found(self):
+        # Houdini tolerates // comments and trailing commas in package
+        # jsons (real MOPS_Plus.json / Modeler.json do this).
+        t = tree({"otls/x.hda": "x", "MOPS_Plus.json":
+                  '{\n// license\n"env": [\n {"MOPS": "/x"},\n],\n}'})
+        info = infer.inspect(t)
+        self.assertEqual(info.shipped_pkg, t / "MOPS_Plus.json")
+        self.assertEqual(info.name, "MOPS_Plus")
+
     def test_hda_filename_fallback_and_hints(self):
         t = tree({"otls/supertool_1.5.hda": "x"})
         info = infer.inspect(t, name_hint="ignored-when-hda-has-name")
