@@ -14,18 +14,18 @@ DEFAULT_FEED = ("https://raw.githubusercontent.com/jmcodex93/mfx-depot/"
 
 
 def self_update(assume_yes):
-    feed_url = os.environ.get("MFX_DEPOT_FEED", DEFAULT_FEED)
-    feed = fetch_feed(feed_url)
-    latest = str(feed.get("latest") or "")
-    if parse_version(latest) <= parse_version(__version__):
-        out("mfx %s is up to date." % __version__)
-        return 0
     self_path = Path(os.environ.get("MFX_SELF_PATH")
                      or sys.argv[0]).resolve()
     if self_path.suffix != ".pyz":
         raise DepotError(
             "self-update only replaces an installed mfx.pyz; this mfx runs "
             "from %s.\nUpdate your checkout with git instead." % self_path)
+    feed_url = os.environ.get("MFX_DEPOT_FEED", DEFAULT_FEED)
+    feed = fetch_feed(feed_url)
+    latest = str(feed.get("latest") or "")
+    if parse_version(latest) <= parse_version(__version__):
+        out("mfx %s is up to date." % __version__)
+        return 0
     out("mfx %s -> %s" % (__version__, latest))
     if feed.get("changelog"):
         out("  changelog: %s" % feed["changelog"])

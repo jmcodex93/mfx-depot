@@ -40,9 +40,12 @@ class TestSelfUpdate(SandboxCase, unittest.TestCase):
         self.assertIn("up to date", r.stdout)
 
     def test_self_update_from_checkout_refuses(self):
-        r = self.sb.mfx("self-update", "--yes")   # MFX_SELF_PATH unset
+        feed = self.sb.home / "depot_feed.json"
+        feed.write_text(json.dumps({"latest": "99.0", "url": ""}))
+        r = self.sb.mfx("self-update", "--yes", env_extra={
+            "MFX_DEPOT_FEED": feed.resolve().as_uri()})   # MFX_SELF_PATH unset
         self.assertEqual(r.returncode, 1)
-        self.assertIn("git", r.stderr)
+        self.assertIn("checkout", r.stderr)
 
     def test_built_pyz_actually_runs(self):
         pyz = build_pyz(self.sb.home / "bin" / "mfx.pyz")
