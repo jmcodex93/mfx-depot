@@ -1,0 +1,4 @@
+#!/bin/zsh
+# Tier-1 gate: full suite, no Houdini required. Run before every commit.
+cd "$(dirname "$0")/.."
+PYTHONPATH=src python3 -m unittest discover -s tests -v
