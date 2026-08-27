@@ -11,14 +11,25 @@ from .houdini import pick_hython
 from .registry import mfx_root
 
 
-def run_helper(hython, hip):
+def run_helper(hython, hip, timeout=600):
     src = pkgutil.get_data("mfx", "hython_helpers/lock_scene.py")
     fd, helper = tempfile.mkstemp(suffix=".py", prefix="mfx_lock_")
     try:
         with os.fdopen(fd, "wb") as f:
             f.write(src)
-        r = subprocess.run([str(hython), helper, str(hip)],
-                           capture_output=True, text=True, timeout=600)
+        try:
+            r = subprocess.run([str(hython), helper, str(hip)],
+                               capture_output=True, text=True, timeout=timeout)
+        except OSError as e:
+            raise DepotError(
+                "could not launch hython at %s for %s:\n%s\n"
+                "Pass --hfs pointing at a valid Houdini install dir."
+                % (hython, hip, e))
+        except subprocess.TimeoutExpired:
+            raise DepotError(
+                "scene analysis of %s exceeded %d seconds.\n"
+                "Try a simpler scene or pass --hfs pointing at a newer Houdini."
+                % (hip, timeout))
     finally:
         os.unlink(helper)
     if r.returncode != 0 or not r.stdout.strip():

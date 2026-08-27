@@ -1,4 +1,4 @@
-import json, os, unittest
+import json, os, tempfile, unittest
 from pathlib import Path
 from unittest import mock
 
@@ -78,6 +78,39 @@ class TestLockE2E(SandboxCase, unittest.TestCase):
                         str(self.sb.home / "fakehfs"))
         self.assertEqual(r.returncode, 1)
         self.assertIn("hython", r.stderr)
+
+    def test_lock_bad_hython_path_is_actionable(self):
+        hip = self.sb.home / "s.hip"
+        hip.write_bytes(b"x")
+        bad_path = str(self.sb.home / "nonexistent" / "hython")
+        r = self.sb.mfx("lock", str(hip),
+                        env_extra={"MFX_HYTHON": bad_path})
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("hython", r.stderr.lower())
+        self.assertIn("--hfs", r.stderr)
+        # Ensure no raw traceback
+        self.assertNotIn("Traceback", r.stderr)
+
+
+class TestRunHelperTimeout(unittest.TestCase):
+    def test_timeout_is_actionable(self):
+        from mfx import lockfile
+
+        # Create a stub hython that sleeps forever
+        with tempfile.TemporaryDirectory() as td:
+            stub = Path(td) / "slow_hython"
+            stub.write_text("#!/usr/bin/env python3\nimport time\ntime.sleep(999)\n")
+            stub.chmod(0o755)
+
+            hip = Path(td) / "test.hip"
+            hip.write_bytes(b"fake")
+
+            # Call run_helper with tiny timeout
+            with self.assertRaises(lockfile.DepotError) as cm:
+                lockfile.run_helper(stub, hip, timeout=0.1)
+
+            self.assertIn("exceeded", str(cm.exception).lower())
+            self.assertIn("seconds", str(cm.exception).lower())
 
 
 if __name__ == "__main__":
