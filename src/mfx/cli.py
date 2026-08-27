@@ -7,6 +7,7 @@ from pathlib import Path
 from . import __version__, infer, installer, lockfile, registry, sources, feeds, doctor
 from . import prefs as prefs_mod
 from .errors import DepotError
+from .feeds import parse_version
 from .selfupdate import self_update
 from .ui import confirm, out
 
@@ -55,6 +56,13 @@ def install_source(source, override_name, prefs_dirs, reg, assume_yes):
                 % (prev["name"], prev["version"], prev["source"]["ref"]))
             out("  To keep both, re-run with --name <other-name>.")
         out("  install to : %s" % installer.payload_target(info, reg))
+        if info.min_houdini:
+            floor = parse_version(info.min_houdini)
+            for p in prefs_dirs:
+                if parse_version(p.name) < floor:
+                    out("  WARNING: %s needs Houdini %s+ but %s is older; "
+                        "it will be registered there but Houdini will not "
+                        "load it." % (info.name, info.min_houdini, p))
         pkg_file = ((prev or {}).get("pkg_file")
                     or installer.default_pkg_file(info.slug))
         for p in prefs_dirs:
@@ -79,6 +87,7 @@ def cmd_install(args):
 def cmd_list(args):
     prefs_dirs = prefs_mod.houdini_pref_dirs()
     reg = load_state(prefs_dirs)
+    out("%-24s %-12s (self)" % ("depot", __version__))
     if not reg["packages"]:
         out("No packages installed. Try: mfx install <zip|folder|url>")
     for slug in sorted(reg["packages"]):
