@@ -6,6 +6,7 @@ import shutil
 from pathlib import Path
 
 from .errors import DepotError
+from .feeds import parse_version
 from .registry import backups_dir, mfx_root, new_entry, now
 
 
@@ -164,3 +165,31 @@ def repair(reg, prefs_dirs, only_slug=None):
                             | set(e.get("prefs") or []))
         report.append("ok    %s: package files rewritten" % slug)
     return report
+
+
+def rollback(slug, reg, prefs_dirs):
+    e = reg["packages"].get(slug)
+    if not e:
+        raise DepotError("%s is not installed. See 'mfx list'." % slug)
+    pdir = mfx_root() / e["payload_dir"]
+    versions = sorted((d.name for d in pdir.glob("*") if d.is_dir()),
+                      key=parse_version)
+    if len(versions) < 2:
+        raise DepotError(
+            "rollback needs at least two installed versions in %s "
+            "(found: %s). Install an older zip first."
+            % (pdir, ", ".join(versions) or "none"))
+    cur = e["version"]
+    if cur not in versions or versions.index(cur) == 0:
+        raise DepotError("%s is already at the oldest version (%s)."
+                         % (slug, cur))
+    prev = versions[versions.index(cur) - 1]
+    target = pdir / prev
+    data = (e.get("versions") or {}).get(prev) or {
+        "env": [{e["env_var"]: str(target)}], "path": "$" + e["env_var"]}
+    register(e["pkg_file"], data, prefs_dirs)
+    e["version"] = prev
+    e["pkg_data"] = data
+    if e.get("pin"):
+        e["pin"] = prev
+    return cur, prev

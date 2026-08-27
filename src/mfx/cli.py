@@ -230,6 +230,22 @@ def cmd_unpin(args):
     return 0
 
 
+def cmd_rollback(args):
+    prefs_dirs = prefs_mod.houdini_pref_dirs()
+    reg = load_state(prefs_dirs)
+    e = reg["packages"].get(args.name)
+    if not e:
+        raise DepotError("%s is not installed. See 'mfx list'." % args.name)
+    out("Rolling back %s from %s" % (e["name"], e["version"]))
+    if not confirm("Proceed?", args.yes):
+        out("Nothing was changed.")
+        return 0
+    cur, prev = installer.rollback(args.name, reg, prefs_dirs)
+    registry.save(reg)
+    out("Done: %s -> %s. Restart Houdini." % (cur, prev))
+    return 0
+
+
 def _register(sub):
     p = sub.add_parser("install", help="install a package from a zip, "
                        "folder, .hda file or URL")
@@ -273,6 +289,11 @@ def _register(sub):
     p = sub.add_parser("unpin", help="allow updates again")
     p.add_argument("name")
     p.set_defaults(func=cmd_unpin)
+
+    p = sub.add_parser("rollback", help="switch back to the previous version")
+    p.add_argument("name")
+    p.add_argument("--yes", action="store_true")
+    p.set_defaults(func=cmd_rollback)
 
 
 def main(argv=None):
