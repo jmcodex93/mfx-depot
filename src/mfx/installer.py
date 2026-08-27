@@ -160,6 +160,7 @@ def repair(reg, prefs_dirs, only_slug=None):
         data = e.get("pkg_data") or {
             "env": [{e["env_var"]: str(target)}], "path": "$" + e["env_var"]}
         register(e["pkg_file"], data, prefs_dirs)
-        e["prefs"] = sorted({str(p) for p in prefs_dirs})
+        e["prefs"] = sorted({str(p) for p in prefs_dirs}
+                            | set(e.get("prefs") or []))
         report.append("ok    %s: package files rewritten" % slug)
     return report

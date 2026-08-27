@@ -121,6 +121,11 @@ def cmd_uninstall(args):
     if not e:
         raise DepotError("%s is not installed. See 'mfx list'." % args.name)
     out("Uninstall %s %s" % (e["name"], e["version"]))
+    dirs = {Path(p) for p in e.get("prefs") or []} | set(prefs_dirs)
+    for prefs in sorted(dirs):
+        f = Path(prefs) / "packages" / e["pkg_file"]
+        if f.is_file():
+            out("  will remove: %s" % f)
     if args.purge:
         out("  will DELETE %s (all versions)"
             % (registry.mfx_root() / e["payload_dir"]))
@@ -138,7 +143,18 @@ def cmd_uninstall(args):
 def cmd_repair(args):
     prefs_dirs = prefs_mod.houdini_pref_dirs()
     reg = load_state(prefs_dirs)
-    report = installer.repair(reg, prefs_dirs, only_slug=args.name)
+    only_slug = None
+    if args.name:
+        only_slug = args.name if args.name in reg["packages"] else registry.slugify(args.name)
+        if only_slug not in reg["packages"]:
+            raise DepotError("%s is not installed. See 'mfx list'." % args.name)
+    num_pkgs = 1 if only_slug else len(reg["packages"])
+    num_prefs = len(prefs_dirs)
+    out("Repair will rewrite package files for %d package(s) in %d prefs dir(s)" % (num_pkgs, num_prefs))
+    if not confirm("Proceed?", args.yes):
+        out("Nothing was changed.")
+        return 0
+    report = installer.repair(reg, prefs_dirs, only_slug=only_slug)
     registry.save(reg)
     errors = 0
     for line in report:
@@ -176,6 +192,7 @@ def _register(sub):
 
     p = sub.add_parser("repair", help="rewrite package files from the registry")
     p.add_argument("name", nargs="?")
+    p.add_argument("--yes", action="store_true")
     p.set_defaults(func=cmd_repair)
 
 

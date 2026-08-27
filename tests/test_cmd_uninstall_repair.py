@@ -36,7 +36,7 @@ class TestUninstallRepair(SandboxCase, unittest.TestCase):
         self._install_camrig()
         f = self.sb.prefs21 / "packages" / "MFX_camrig.json"
         f.unlink()
-        r = self.sb.mfx("repair")
+        r = self.sb.mfx("repair", "--yes")
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertTrue(f.is_file())
         self.assertEqual(json.loads(f.read_text())["path"], "$MFX_CAMRIG")
@@ -44,10 +44,15 @@ class TestUninstallRepair(SandboxCase, unittest.TestCase):
     def test_repair_reports_missing_payload(self):
         payload = self._install_camrig()
         shutil.rmtree(payload)
-        r = self.sb.mfx("repair")
+        r = self.sb.mfx("repair", "--yes")
         self.assertEqual(r.returncode, 1)
         self.assertIn("missing on disk", r.stdout + r.stderr)
         self.assertIn("mfx install", r.stdout + r.stderr)  # suggested fix
+
+    def test_repair_unknown_is_actionable(self):
+        r = self.sb.mfx("repair", "nope", "--yes")
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("not installed", r.stderr)
 
 
 if __name__ == "__main__":
