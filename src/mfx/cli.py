@@ -7,6 +7,7 @@ from pathlib import Path
 from . import __version__, infer, installer, registry, sources, feeds
 from . import prefs as prefs_mod
 from .errors import DepotError
+from .selfupdate import self_update
 from .ui import confirm, out
 
 
@@ -246,6 +247,10 @@ def cmd_rollback(args):
     return 0
 
 
+def cmd_self_update(args):
+    return self_update(args.yes)
+
+
 def _register(sub):
     p = sub.add_parser("install", help="install a package from a zip, "
                        "folder, .hda file or URL")
@@ -294,6 +299,10 @@ def _register(sub):
     p.add_argument("name")
     p.add_argument("--yes", action="store_true")
     p.set_defaults(func=cmd_rollback)
+
+    p = sub.add_parser("self-update", help="update mfx itself")
+    p.add_argument("--yes", action="store_true")
+    p.set_defaults(func=cmd_self_update)
 
 
 def main(argv=None):

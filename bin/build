@@ -1,0 +1,7 @@
+#!/bin/zsh
+# Build the release artifact: a single stdlib zipapp.
+cd "$(dirname "$0")/.."
+mkdir -p dist
+python3 -m zipapp src -m "mfx.__main__:main" -o dist/mfx.pyz \
+    -p "/usr/bin/env python3"
+echo "built dist/mfx.pyz"
