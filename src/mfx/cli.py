@@ -4,7 +4,7 @@ import sys
 import tempfile
 from pathlib import Path
 
-from . import __version__, infer, installer, registry, sources, feeds, doctor
+from . import __version__, infer, installer, lockfile, registry, sources, feeds, doctor
 from . import prefs as prefs_mod
 from .errors import DepotError
 from .selfupdate import self_update
@@ -262,6 +262,26 @@ def cmd_doctor(args):
     return 1 if any(lv == "ERROR" for lv, _ in findings) else 0
 
 
+def cmd_lock(args):
+    prefs_dirs = prefs_mod.houdini_pref_dirs()
+    reg = load_state(prefs_dirs)
+    lock = lockfile.lock(args.scene, reg, hfs_flag=args.hfs)
+    text = json.dumps(lock, indent=2) + "\n"
+    if args.output:
+        Path(args.output).write_text(text)
+        out("Lockfile written to %s" % args.output)
+    else:
+        out(text.rstrip())
+    if lock["embedded"]:
+        out("WARNING: %d definition(s) are embedded in the hip and shadow "
+            "any installed version: %s"
+            % (len(lock["embedded"]), ", ".join(lock["embedded"])))
+    if lock["unresolved"]:
+        out("NOTE: %d type(s) come from libraries mfx does not manage."
+            % len(lock["unresolved"]))
+    return 0
+
+
 def _register(sub):
     p = sub.add_parser("install", help="install a package from a zip, "
                        "folder, .hda file or URL")
@@ -317,6 +337,12 @@ def _register(sub):
 
     p = sub.add_parser("doctor", help="scan for conflicts and broken packages")
     p.set_defaults(func=cmd_doctor)
+
+    p = sub.add_parser("lock", help="export which packages a hip uses")
+    p.add_argument("scene")
+    p.add_argument("-o", "--output")
+    p.add_argument("--hfs", help="Houdini install dir to run hython from")
+    p.set_defaults(func=cmd_lock)
 
 
 def main(argv=None):
