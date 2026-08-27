@@ -12,7 +12,18 @@ REAL_HDA = Path(__file__).parent / "fixtures" / "mfx_vibrate_1.0.hda"
 class TestHdaIndex(unittest.TestCase):
     def test_real_production_hda(self):
         ops = operator_types(REAL_HDA)
-        self.assertIn(("Sop", "mfx::vibrate::1.0"), ops)
+        self.assertEqual(ops, [("Sop", "mfx::vibrate::1.0")])
+
+    def test_binary_key_substring_false_positive_rejected(self):
+        # "Sop" inside "StopSop" and "Shop" inside "BarShop" must not be
+        # mistaken for a genuine "<Table>/<name>" section key -- there is
+        # no real operator index here, so this must raise DepotError.
+        tmp = Path(tempfile.mkdtemp(prefix="mfxidx_"))
+        junk = tmp / "fake_keys.hda"
+        junk.write_text("randomStopSop/xyz::1.0 tail\nFooBarShop/thing more\n")
+        with self.assertRaises(DepotError) as cm:
+            operator_types(junk)
+        self.assertIn("no operator index", str(cm.exception))
 
     def test_dummy_fixture(self):
         tmp = Path(tempfile.mkdtemp(prefix="mfxidx_"))

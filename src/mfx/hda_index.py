@@ -35,8 +35,17 @@ BLOCK_SPAN = 2000       # a table line lives near its operator line
 # doesn't match unrelated slash-separated text (URLs, file paths, ...).
 _TABLES = ("Object", "Sop", "Pop", "Dop", "Chop", "Chopnet", "Cop2",
            "CopNet", "Vop", "Vopnet", "Shop", "Driver", "TopNet", "Lop")
+# A leading negative lookbehind for [A-Za-z0-9_] stops a match from
+# starting mid-identifier (e.g. the "Sop" inside "randomStopSop/xyz" or
+# the "Shop" inside "FooBarShop/thing" must NOT match -- only a table
+# name at a genuine identifier boundary counts). It is satisfied
+# trivially at offset 0 and after any non-word byte, which is exactly
+# where real section keys sit in the binary format. The trailing
+# optype capture ([A-Za-z0-9_.:]+) is greedy over that character class
+# and simply stops at the first byte outside it -- tier-2 QA (Task 16)
+# cross-checks the result against hou.hda.
 KEY_RE = re.compile(
-    r"(?:([A-Za-z_][\w.]*)::)?(%s)/([A-Za-z0-9_.:]+)"
+    r"(?<![A-Za-z0-9_])(?:([A-Za-z_][\w.]*)::)?(%s)/([A-Za-z0-9_.:]+)"
     % "|".join(_TABLES))
 
 
