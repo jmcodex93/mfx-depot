@@ -113,6 +113,42 @@ def cmd_info(args):
     return 0
 
 
+def cmd_uninstall(args):
+    prefs_dirs = prefs_mod.houdini_pref_dirs()
+    reg = load_state(prefs_dirs)
+    slug = args.name if args.name in reg["packages"] else registry.slugify(args.name)
+    e = reg["packages"].get(slug)
+    if not e:
+        raise DepotError("%s is not installed. See 'mfx list'." % args.name)
+    out("Uninstall %s %s" % (e["name"], e["version"]))
+    if args.purge:
+        out("  will DELETE %s (all versions)"
+            % (registry.mfx_root() / e["payload_dir"]))
+    if not confirm("Proceed?", args.yes):
+        out("Nothing was changed.")
+        return 0
+    installer.uninstall(slug, reg, prefs_dirs, args.purge)
+    registry.save(reg)
+    out("Uninstalled." + ("" if args.purge else
+        "  Files kept in %s (use --purge to delete)."
+        % (registry.mfx_root() / e["payload_dir"])))
+    return 0
+
+
+def cmd_repair(args):
+    prefs_dirs = prefs_mod.houdini_pref_dirs()
+    reg = load_state(prefs_dirs)
+    report = installer.repair(reg, prefs_dirs, only_slug=args.name)
+    registry.save(reg)
+    errors = 0
+    for line in report:
+        out(line)
+        errors += line.startswith("ERROR")
+    if not report:
+        out("Nothing to repair.")
+    return 1 if errors else 0
+
+
 def _register(sub):
     p = sub.add_parser("install", help="install a package from a zip, "
                        "folder, .hda file or URL")
@@ -130,6 +166,17 @@ def _register(sub):
     p = sub.add_parser("info", help="show one package's registry entry")
     p.add_argument("name")
     p.set_defaults(func=cmd_info)
+
+    p = sub.add_parser("uninstall", help="unregister a package")
+    p.add_argument("name")
+    p.add_argument("--purge", action="store_true",
+                   help="also delete the installed files")
+    p.add_argument("--yes", action="store_true")
+    p.set_defaults(func=cmd_uninstall)
+
+    p = sub.add_parser("repair", help="rewrite package files from the registry")
+    p.add_argument("name", nargs="?")
+    p.set_defaults(func=cmd_repair)
 
 
 def main(argv=None):

@@ -123,3 +123,43 @@ def apply(info, reg, prefs_dirs, source):
                           | set(e.get("prefs") or [])))
     reg["packages"][info.slug] = e
     return target
+
+
+def uninstall(slug, reg, prefs_dirs, purge):
+    e = reg["packages"].get(slug)
+    if not e:
+        raise DepotError("%s is not installed. See 'mfx list'." % slug)
+    removed = []
+    dirs = {Path(p) for p in e.get("prefs") or []} | set(prefs_dirs)
+    for prefs in sorted(dirs):
+        f = Path(prefs) / "packages" / e["pkg_file"]
+        if f.is_file():
+            f.unlink()
+            removed.append(str(f))
+    if purge:
+        pdir = mfx_root() / e["payload_dir"]
+        if pdir.is_dir():
+            shutil.rmtree(pdir)
+    del reg["packages"][slug]
+    return removed
+
+
+def repair(reg, prefs_dirs, only_slug=None):
+    report = []
+    for slug in sorted(reg["packages"]):
+        if only_slug and slug != only_slug:
+            continue
+        e = reg["packages"][slug]
+        target = mfx_root() / e["payload_dir"] / e["version"]
+        if not target.is_dir():
+            report.append(
+                "ERROR %s: payload %s missing on disk. Re-run "
+                "'mfx install <original source>' to restore it."
+                % (slug, target))
+            continue
+        data = e.get("pkg_data") or {
+            "env": [{e["env_var"]: str(target)}], "path": "$" + e["env_var"]}
+        register(e["pkg_file"], data, prefs_dirs)
+        e["prefs"] = sorted({str(p) for p in prefs_dirs})
+        report.append("ok    %s: package files rewritten" % slug)
+    return report
