@@ -4,7 +4,7 @@ import sys
 import tempfile
 from pathlib import Path
 
-from . import __version__, infer, installer, registry, sources
+from . import __version__, infer, installer, registry, sources, feeds
 from . import prefs as prefs_mod
 from .errors import DepotError
 from .ui import confirm, out
@@ -165,6 +165,71 @@ def cmd_repair(args):
     return 1 if errors else 0
 
 
+def cmd_update(args):
+    prefs_dirs = prefs_mod.houdini_pref_dirs()
+    reg = load_state(prefs_dirs)
+    slugs = [args.name] if args.name else sorted(reg["packages"])
+    if args.name and args.name not in reg["packages"]:
+        raise DepotError("%s is not installed. See 'mfx list'." % args.name)
+    rc = 0
+    for slug in slugs:
+        e = reg["packages"][slug]
+        status = feeds.check(e)
+        if status is None:
+            out("%-24s no update channel (no feed, not from GitHub)" % slug)
+            continue
+        if "error" in status:
+            out("%-24s check failed: %s" % (slug, status["error"]))
+            continue
+        if not status["newer"]:
+            out("%-24s up to date (%s)" % (slug, e["version"]))
+            continue
+        if e.get("pin"):
+            out("%-24s %s -> %s available, but pinned at %s (mfx unpin %s)"
+                % (slug, e["version"], status["latest"], e["pin"], slug))
+            continue
+        out("%-24s %s -> %s" % (slug, e["version"], status["latest"]))
+        if status["changelog"]:
+            out("  changelog: %s" % status["changelog"])
+        if not status["url"]:
+            out("  the feed gives no download URL; get the new version "
+                "from the creator and 'mfx install' it.")
+            continue
+        rc = install_source(status["url"], e["name"], prefs_dirs, reg,
+                            args.yes) or rc
+    return rc
+
+
+def cmd_pin(args):
+    prefs_dirs = prefs_mod.houdini_pref_dirs()
+    reg = load_state(prefs_dirs)
+    e = reg["packages"].get(args.name)
+    if not e:
+        raise DepotError("%s is not installed. See 'mfx list'." % args.name)
+    if args.pin_version and args.pin_version != e["version"]:
+        raise DepotError(
+            "%s is at %s, not %s. Pin freezes the CURRENT version; use "
+            "'mfx rollback %s' first to change versions."
+            % (args.name, e["version"], args.pin_version, args.name))
+    e["pin"] = e["version"]
+    registry.save(reg)
+    out("%s pinned at %s (excluded from 'mfx update')."
+        % (args.name, e["pin"]))
+    return 0
+
+
+def cmd_unpin(args):
+    prefs_dirs = prefs_mod.houdini_pref_dirs()
+    reg = load_state(prefs_dirs)
+    e = reg["packages"].get(args.name)
+    if not e:
+        raise DepotError("%s is not installed. See 'mfx list'." % args.name)
+    e["pin"] = None
+    registry.save(reg)
+    out("%s unpinned." % args.name)
+    return 0
+
+
 def _register(sub):
     p = sub.add_parser("install", help="install a package from a zip, "
                        "folder, .hda file or URL")
@@ -194,6 +259,20 @@ def _register(sub):
     p.add_argument("name", nargs="?")
     p.add_argument("--yes", action="store_true")
     p.set_defaults(func=cmd_repair)
+
+    p = sub.add_parser("update", help="check feeds and apply updates (opt-in)")
+    p.add_argument("name", nargs="?")
+    p.add_argument("--yes", action="store_true")
+    p.set_defaults(func=cmd_update)
+
+    p = sub.add_parser("pin", help="freeze a package at its current version")
+    p.add_argument("name")
+    p.add_argument("pin_version", nargs="?")
+    p.set_defaults(func=cmd_pin)
+
+    p = sub.add_parser("unpin", help="allow updates again")
+    p.add_argument("name")
+    p.set_defaults(func=cmd_unpin)
 
 
 def main(argv=None):
