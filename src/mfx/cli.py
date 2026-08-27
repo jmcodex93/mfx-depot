@@ -4,7 +4,7 @@ import sys
 import tempfile
 from pathlib import Path
 
-from . import __version__, infer, installer, registry, sources, feeds
+from . import __version__, infer, installer, registry, sources, feeds, doctor
 from . import prefs as prefs_mod
 from .errors import DepotError
 from .selfupdate import self_update
@@ -251,6 +251,17 @@ def cmd_self_update(args):
     return self_update(args.yes)
 
 
+def cmd_doctor(args):
+    prefs_dirs = prefs_mod.houdini_pref_dirs()
+    reg = load_state(prefs_dirs)
+    findings = doctor.run(reg, prefs_dirs)
+    for level, msg in findings:
+        out("%-5s %s" % (level, msg))
+    if not findings:
+        out("No problems found.")
+    return 1 if any(lv == "ERROR" for lv, _ in findings) else 0
+
+
 def _register(sub):
     p = sub.add_parser("install", help="install a package from a zip, "
                        "folder, .hda file or URL")
@@ -303,6 +314,9 @@ def _register(sub):
     p = sub.add_parser("self-update", help="update mfx itself")
     p.add_argument("--yes", action="store_true")
     p.set_defaults(func=cmd_self_update)
+
+    p = sub.add_parser("doctor", help="scan for conflicts and broken packages")
+    p.set_defaults(func=cmd_doctor)
 
 
 def main(argv=None):
