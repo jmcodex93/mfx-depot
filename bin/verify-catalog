@@ -1,0 +1,32 @@
+#!/bin/zsh
+# Verify every 'free' catalog entry installs cleanly into a disposable
+# HOME (spec 2a section 5.4). Live network when sources are remote;
+# operator-run before every catalog commit. Seed of Certify.
+cd "$(dirname "$0")/.."
+CAT="${1:-$PWD/catalog.json}"
+[ -f "$CAT" ] || { echo "error: catalog not found: $CAT" >&2; exit 1; }
+slugs=$(python3 -c "import json,sys; print(' '.join(
+    e['slug'] for e in json.load(open(sys.argv[1]))['packages']
+    if e.get('type') == 'free'))" "$CAT")
+[ -n "$slugs" ] || { echo "no free entries to verify"; exit 0; }
+fail=0
+for s in ${=slugs}; do
+  TMP=$(mktemp -d)
+  mkdir -p "$TMP/prefs/21.0"
+  keep=""
+  if HOME="$TMP" USERPROFILE="$TMP" MFX_ROOT="$TMP/MFX" \
+     HOUDINI_USER_PREF_DIR="$TMP/prefs/__HVER__" \
+     MFX_CATALOG_URL="file://$CAT" \
+     PYTHONPATH=src python3 -m mfx install "$s" --yes >"$TMP/log" 2>&1 &&
+     HOME="$TMP" USERPROFILE="$TMP" MFX_ROOT="$TMP/MFX" \
+     HOUDINI_USER_PREF_DIR="$TMP/prefs/__HVER__" \
+     PYTHONPATH=src python3 -m mfx doctor >>"$TMP/log" 2>&1; then
+    echo "PASS  $s"
+  else
+    echo "FAIL  $s  (log: $TMP/log)"
+    fail=1
+    keep=1
+  fi
+  [ -z "$keep" ] && rm -rf "$TMP"
+done
+exit $fail

@@ -1,0 +1,7 @@
+{"schema": 1, "packages": [
+  {"slug": "vibrate", "name": "MFX Vibrate", "type": "free",
+   "description": "Layered vibration/shake SOP (C4D Vibrate-tag style)",
+   "source": "https://github.com/jmcodex93/mfx-vibrate",
+   "feed": "https://raw.githubusercontent.com/jmcodex93/mfx-vibrate/main/docs/updates/vibrate.json",
+   "min_houdini": "21.0", "tags": ["motion", "sop", "mfx"]}
+]}
