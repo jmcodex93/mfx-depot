@@ -46,7 +46,7 @@ def resolve_slug(reg, name):
 
 
 def install_source(source, override_name, prefs_dirs, reg, assume_yes,
-                    version_hint=None):
+                    version_hint=None, feed=None, min_houdini=None):
     """Shared by 'mfx install' and 'mfx update' (Task 10)."""
     with tempfile.TemporaryDirectory(prefix="mfx_") as td:
         tree, hints = sources.acquire(source, Path(td))
@@ -60,6 +60,11 @@ def install_source(source, override_name, prefs_dirs, reg, assume_yes,
         info = infer.inspect(root, name_hint=hints.get("name"),
                              version_hint=hints.get("version") or version_hint,
                              override_name=override_name)
+        # catalog metadata fills what the package's own mfx.json didn't set
+        if feed and not info.feed:
+            info.feed = feed
+        if min_houdini and not info.min_houdini:
+            info.min_houdini = min_houdini
         prev = reg["packages"].get(info.slug)
         out("%s %s" % (info.name, info.version))
         if info.unversioned:
@@ -94,7 +99,33 @@ def install_source(source, override_name, prefs_dirs, reg, assume_yes,
 def cmd_install(args):
     prefs_dirs = prefs_mod.houdini_pref_dirs(args.prefs_dir)
     reg = load_state(prefs_dirs)
-    return install_source(args.source, args.name, prefs_dirs, reg, args.yes)
+    src = args.source
+    if not Path(src).expanduser().exists() and "://" not in src:
+        data, cached = catalog.fetch()
+        if cached:
+            out("(using cached catalog, may be stale)")
+        entry = catalog.resolve(data, src)
+        if entry is None:
+            raise DepotError(
+                "'%s' is not a local path, a URL, or a catalog entry.\n"
+                "Check the path, or run 'mfx search' to browse the "
+                "catalog." % src)
+        if entry.get("type") == "commercial":
+            if not entry.get("buy_url"):
+                raise DepotError(
+                    "catalog entry '%s' is commercial but has no buy_url; "
+                    "report it at %s" % (src, catalog.catalog_url()))
+            out("%s - %s" % (entry.get("name", src),
+                             entry.get("description", "")))
+            out("  Buy at: %s" % entry["buy_url"])
+            out("  After purchase: mfx install <downloaded zip>")
+            return 0
+        return install_source(entry["source"],
+                              entry.get("name") or args.name,
+                              prefs_dirs, reg, args.yes,
+                              feed=entry.get("feed"),
+                              min_houdini=entry.get("min_houdini"))
+    return install_source(src, args.name, prefs_dirs, reg, args.yes)
 
 
 def cmd_list(args):
