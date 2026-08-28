@@ -48,6 +48,36 @@ class TestPrefsDiscovery(unittest.TestCase):
                 prefs.houdini_pref_dirs()
         self.assertIn("Launch Houdini once", str(cm.exception))
 
+    def test_custom_pref_dir_is_authoritative_over_platform_default(self):
+        # Houdini replaces the platform default with HOUDINI_USER_PREF_DIR,
+        # so mfx must not also register in ~/Library/... (dead files there).
+        default = self.tmp / "Library" / "Preferences" / "houdini"
+        (default / "21.0").mkdir(parents=True)
+        with self._with_env(HOUDINI_USER_PREF_DIR=str(self.tmp / "prefs" / "__HVER__")), \
+             mock.patch('platform.system', return_value="Darwin"), \
+             mock.patch('pathlib.Path.home', return_value=self.tmp):
+            dirs = prefs.houdini_pref_dirs()
+        self.assertTrue(all(default not in d.parents for d in dirs))
+        self.assertEqual(sorted(d.name for d in dirs), ["21.0", "22.0"])
+
+    def test_custom_pref_dir_matching_nothing_raises_not_falls_back(self):
+        default = self.tmp / "Library" / "Preferences" / "houdini"
+        (default / "21.0").mkdir(parents=True)
+        with self._with_env(HOUDINI_USER_PREF_DIR=str(self.tmp / "nope" / "__HVER__")), \
+             mock.patch('platform.system', return_value="Darwin"), \
+             mock.patch('pathlib.Path.home', return_value=self.tmp):
+            with self.assertRaises(DepotError) as cm:
+                prefs.houdini_pref_dirs()
+        self.assertIn("HOUDINI_USER_PREF_DIR", str(cm.exception))
+        self.assertIn("Launch Houdini once", str(cm.exception))
+
+    def test_custom_pref_dir_matching_nothing_ok_with_explicit_extra(self):
+        extra = self.tmp / "prefs" / "21.0"
+        with self._with_env(HOUDINI_USER_PREF_DIR=str(self.tmp / "nope" / "__HVER__")), \
+             mock.patch('pathlib.Path.home', return_value=self.tmp):
+            dirs = prefs.houdini_pref_dirs(extra=str(extra))
+        self.assertEqual([d.resolve() for d in dirs], [extra.resolve()])
+
     def test_pkg_dir(self):
         self.assertEqual(prefs.pkg_dir(Path("/x/21.0")), Path("/x/21.0/packages"))
 
