@@ -1,0 +1,42 @@
+#!/bin/zsh
+# Release pipeline (spec 2a section 4). Usage: bin/release "changelog line"
+# Order matters: the feed update is LAST so a failed release never
+# advertises a broken version.
+set -e
+cd "$(dirname "$0")/.."
+NOTES="${1:?usage: bin/release \"one-line changelog\"}"
+[ -z "$(git status --porcelain)" ] || { echo "error: working tree not clean" >&2; exit 1; }
+[ "$(git branch --show-current)" = "main" ] || { echo "error: not on main" >&2; exit 1; }
+VER=$(PYTHONPATH=src python3 -c "import mfx; print(mfx.__version__)")
+if git rev-parse "v$VER" >/dev/null 2>&1; then
+  echo "error: tag v$VER already exists; bump __version__ in src/mfx/__init__.py first" >&2
+  exit 1
+fi
+bin/qa
+bin/build
+[ "$(python3 dist/mfx.pyz --version)" = "mfx $VER" ] || {
+  echo "error: built mfx.pyz does not report version $VER" >&2; exit 1; }
+mkdir -p dist/release
+STAGE=$(mktemp -d)
+mkdir "$STAGE/mfx-depot"
+cp dist/mfx.pyz bin/get-depot.py README.md "$STAGE/mfx-depot/"
+(cd "$STAGE" && zip -qr "mfx-depot-$VER.zip" mfx-depot)
+mv "$STAGE/mfx-depot-$VER.zip" dist/release/
+rm -rf "$STAGE"
+git tag "v$VER"
+git push origin main "v$VER"
+gh release create "v$VER" "dist/release/mfx-depot-$VER.zip" \
+    dist/mfx.pyz bin/get-depot.py --title "mfx $VER" --notes "$NOTES"
+PYZ_URL="https://github.com/jmcodex93/mfx-depot/releases/download/v$VER/mfx.pyz"
+python3 - "$VER" "$PYZ_URL" "$NOTES" <<'PY'
+import json, sys
+ver, url, log = sys.argv[1:4]
+path = "docs/updates/depot.json"
+with open(path, "w") as f:
+    json.dump({"latest": ver, "url": url, "changelog": log}, f, indent=2)
+    f.write("\n")
+PY
+git add docs/updates/depot.json
+git commit -m "release: v$VER feed"
+git push origin main
+echo "released v$VER"
