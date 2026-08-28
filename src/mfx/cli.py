@@ -5,7 +5,7 @@ import tempfile
 import traceback
 from pathlib import Path
 
-from . import __version__, infer, installer, lockfile, registry, sources, feeds, doctor
+from . import __version__, infer, installer, lockfile, registry, sources, feeds, doctor, catalog
 from . import prefs as prefs_mod
 from .errors import DepotError
 from .feeds import parse_version
@@ -293,6 +293,33 @@ def cmd_lock(args):
     return 0
 
 
+def cmd_search(args):
+    data, cached = catalog.fetch()
+    if cached:
+        out("(using cached catalog, may be stale)")
+    try:
+        reg = load_state(prefs_mod.houdini_pref_dirs())
+    except DepotError:
+        reg = {"packages": {}}        # listing works without Houdini prefs
+    hits = catalog.find(data, args.term)
+    if not hits:
+        out("No catalog entries match '%s'. Run 'mfx search' for the "
+            "full list." % (args.term or ""))
+        return 0
+    for e in hits:
+        flags = []
+        installed = reg["packages"].get(e["slug"])
+        if installed:
+            flags.append("installed %s" % installed["version"])
+        if e.get("verified"):
+            flags.append("verified %s" % e["verified"])
+        out("%-14s %-11s %-22s %s" % (e["slug"], e.get("type", "?"),
+                                      e.get("name", ""), " ".join(flags)))
+        if e.get("description"):
+            out("    %s" % e["description"])
+    return 0
+
+
 def _register(sub):
     p = sub.add_parser("install", help="install a package from a zip, "
                        "folder, .hda file or URL")
@@ -354,6 +381,10 @@ def _register(sub):
     p.add_argument("-o", "--output")
     p.add_argument("--hfs", help="Houdini install dir to run hython from")
     p.set_defaults(func=cmd_lock)
+
+    p = sub.add_parser("search", help="search the package catalog")
+    p.add_argument("term", nargs="?")
+    p.set_defaults(func=cmd_search)
 
 
 def main(argv=None):
