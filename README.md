@@ -84,7 +84,7 @@ All fields optional. For GitHub-sourced packages, `mfx update` auto-checks relea
 
 ## Development
 
-- `bin/test`: Run the fast test suite (no Houdini required). 94 tests covering install, update, repair, doctor, lockfile, and edge cases.
+- `bin/test`: Run the fast test suite (no Houdini required). 132 tests covering install, update, repair, doctor, lockfile, and edge cases.
 - `bin/qa`: Pre-release QA on real Houdini 21.0 and 22.0 installs (requires `--hfs` or auto-discovery). Tests package loading, lockfile accuracy, and tier-2 integration.
 - `bin/build`: Build `dist/mfx.pyz` (zipapp) and platform shims for distribution.
 - `bin/release "changelog"`: Gated release: qa + build + gh release + feed.

@@ -43,14 +43,14 @@ def fetch():
     except (urllib.error.URLError, OSError) as e:
         cp = cache_path()
         if cp.is_file():
-            return _parse(cp.read_text(), str(cp)), True
+            return _parse(cp.read_text(encoding="utf-8"), str(cp)), True
         raise DepotError(
             "could not fetch the catalog from %s (%s) and no cached copy "
             "exists.\nCheck your connection and re-run." % (url, e))
     data = _parse(raw, url)
     cache_dir().mkdir(parents=True, exist_ok=True)
     tmp = cache_path().with_suffix(".tmp")
-    tmp.write_text(raw)
+    tmp.write_text(raw, encoding="utf-8")
     os.replace(tmp, cache_path())
     return data, False
 

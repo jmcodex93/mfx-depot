@@ -29,16 +29,30 @@ class TestVerifyCatalog(SandboxCase, unittest.TestCase):
         self.assertEqual(r.returncode, 1)
         self.assertIn("FAIL  ghost", r.stdout)
 
+    def test_malformed_catalog_fails(self):
+        f = self.sb.home / "cat.json"
+        f.write_text("{nope")  # Invalid JSON
+        r = subprocess.run(["zsh", str(REPO / "bin" / "verify-catalog"),
+                           str(f)], capture_output=True, text=True,
+                          cwd=str(REPO), env=self.sb.env())
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("could not parse", r.stderr)
+
     def test_shipped_catalog_is_valid_schema(self):
         data = json.loads((REPO / "catalog.json").read_text())
         self.assertEqual(data["schema"], 1)
+        slugs = []
         for e in data["packages"]:
             self.assertIn("slug", e)
+            slugs.append(e["slug"])
             self.assertIn(e["type"], ("free", "commercial"))
             if e["type"] == "free":
                 self.assertIn("source", e)
             else:
                 self.assertIn("buy_url", e)
+        # Spec §5.1: slugs are unique
+        self.assertEqual(len(slugs), len(set(slugs)),
+                        "Duplicate slugs found in catalog")
 
 
 if __name__ == "__main__":

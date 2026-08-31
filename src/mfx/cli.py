@@ -120,8 +120,12 @@ def cmd_install(args):
             out("  Buy at: %s" % entry["buy_url"])
             out("  After purchase: mfx install <downloaded zip>")
             return 0
+        if not entry.get("source"):
+            raise DepotError(
+                "catalog entry '%s' (free) has no source URL; "
+                "report it at %s" % (src, catalog.catalog_url()))
         return install_source(entry["source"],
-                              entry.get("name") or args.name,
+                              args.name or entry.get("name"),
                               prefs_dirs, reg, args.yes,
                               feed=entry.get("feed"),
                               min_houdini=entry.get("min_houdini"))
