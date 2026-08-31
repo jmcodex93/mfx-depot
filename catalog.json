@@ -1,7 +1,86 @@
-{"schema": 1, "packages": [
-  {"slug": "vibrate", "name": "MFX Vibrate", "type": "free",
+{
+ "schema": 1,
+ "packages": [
+  {
+   "slug": "vibrate",
+   "name": "MFX Vibrate",
+   "type": "free",
    "description": "Layered vibration/shake SOP (C4D Vibrate-tag style)",
    "source": "https://github.com/jmcodex93/mfx-vibrate",
    "feed": "https://raw.githubusercontent.com/jmcodex93/mfx-vibrate/main/docs/updates/vibrate.json",
-   "min_houdini": "21.0", "tags": ["motion", "sop", "mfx"]}
-]}
+   "min_houdini": "21.0",
+   "tags": [
+    "motion",
+    "sop",
+    "mfx"
+   ],
+   "verified": "2026-08-28"
+  },
+  {
+   "slug": "labs",
+   "name": "SideFX Labs",
+   "type": "free",
+   "description": "SideFX Labs toolset: 150+ HDAs for game-dev, baking, pipeline",
+   "source": "https://github.com/sideeffects/SideFXLabs",
+   "tags": [
+    "labs",
+    "sidefx",
+    "gamedev",
+    "tools"
+   ],
+   "verified": "2026-08-28"
+  },
+  {
+   "slug": "mops",
+   "name": "MOPs",
+   "type": "free",
+   "description": "Motion Operators: mograph falloffs, transformers, instancers",
+   "source": "https://github.com/toadstorm/MOPS",
+   "tags": [
+    "mograph",
+    "motion",
+    "toadstorm"
+   ],
+   "verified": "2026-08-28"
+  },
+  {
+   "slug": "qlib",
+   "name": "qLib",
+   "type": "free",
+   "description": "Hundreds of -ql helper nodes: attributes, deformers, visualizers",
+   "source": "https://github.com/qLab/qLib",
+   "tags": [
+    "utilities",
+    "library",
+    "helpers"
+   ],
+   "verified": "2026-08-28"
+  },
+  {
+   "slug": "aelib",
+   "name": "Aelib",
+   "type": "free",
+   "description": "~100 SOP HDAs: creators, deformers, curves, solvers (Aeoll)",
+   "source": "https://github.com/Aeoll/Aelib",
+   "tags": [
+    "modeling",
+    "deformers",
+    "procedural"
+   ],
+   "verified": "2026-08-28"
+  },
+  {
+   "slug": "hpaint",
+   "name": "hpaint",
+   "type": "free",
+   "description": "Grease-pencil style painting on geometry in SOPs",
+   "source": "https://github.com/aaronsmithtv/hpaint",
+   "tags": [
+    "paint",
+    "sop",
+    "drawing"
+   ],
+   "verified": "2026-08-28"
+  }
+ ]
+}
