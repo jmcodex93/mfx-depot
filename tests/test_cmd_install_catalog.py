@@ -54,6 +54,38 @@ class TestInstallByName(SandboxCase, unittest.TestCase):
         self.assertTrue((self.sb.home / "MFX" / "camrig" / "9.9").is_dir())
         self.assertFalse((self.sb.home / "MFX" / "camrig" / "2.0").exists())
 
+    def test_explicit_name_flag_beats_catalog_entry_name(self):
+        # Finding 2: --name flag should take precedence over catalog entry name
+        env = self._catalog_with_free_entry()
+        # Catalog entry has name "MFX CamRig", but we override with --name
+        r = self.sb.mfx("install", "camrig", "--name", "Other Name", "--yes",
+                       env_extra=env)
+        self.assertEqual(r.returncode, 0, r.stderr + r.stdout)
+        # Package should be installed under the slugified override name
+        self.assertTrue((self.sb.home / "MFX" / "other-name" / "2.0").is_dir(),
+                       "Package not found at expected slug 'other-name'")
+        # Verify it's registered with the override name
+        r = self.sb.mfx("info", "other-name")
+        self.assertEqual(r.returncode, 0)
+        self.assertIn("Other Name", r.stdout)
+
+    def test_free_entry_without_source_fails(self):
+        # Finding 4: free entry missing source should raise actionable error
+        z = fixtures.make_camrig_zip(self.sb.home)
+        cat = {"schema": 1, "packages": [
+            {"slug": "nosrc", "name": "NoSource", "type": "free",
+             "description": "missing source field"}
+            # Note: no "source" field
+        ]}
+        f = self.sb.home / "catalog.json"
+        f.write_text(json.dumps(cat))
+        env = {"MFX_CATALOG_URL": f.resolve().as_uri()}
+        r = self.sb.mfx("install", "nosrc", "--yes", env_extra=env)
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("no source", r.stderr)
+        # Catalog URL should be mentioned for reporting
+        self.assertIn("catalog", r.stderr.lower())
+
 
 if __name__ == "__main__":
     unittest.main()
