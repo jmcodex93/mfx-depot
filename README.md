@@ -7,7 +7,7 @@
 Download the latest release zip from [GitHub](https://github.com/jmcodex93/mfx-depot/releases) (once published), unzip it, and run the bootstrap script:
 
 ```bash
-unzip mfx-depot-0.1.0.zip
+unzip mfx-depot-0.2.0.zip
 cd mfx-depot
 python3 get-depot.py
 ```
@@ -23,7 +23,7 @@ python3 get-depot.py --yes
 Alternative: if you have only the URL to `mfx.pyz`, download it directly:
 
 ```bash
-python3 get-depot.py --url https://github.com/jmcodex93/mfx-depot/releases/download/v0.1.0/mfx.pyz --yes
+python3 get-depot.py --url https://github.com/jmcodex93/mfx-depot/releases/download/v0.2.0/mfx.pyz --yes
 ```
 
 ## Usage
